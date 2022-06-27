@@ -1,22 +1,17 @@
 import streamlit as st
 import pandas as pd
 
-st.write("HARNet Project")
-
 st.set_page_config(
      page_title = "HARNet | Research Project",
      page_icon=":chart_with_upwards_trend:",
      layout="wide",
-     initial_sidebar_state="expanded",
-     menu_items={
-         'Get Help': 'https://www.extremelycoolapp.com/help',
-         'Report a bug': "https://www.extremelycoolapp.com/bug",
-         'About': "# This is a header. This is an *extremely* cool app!"
-     }
+     initial_sidebar_state="expanded"
  )
 
-
 # ---- Header ----
+
+st.write("HARNet Project")
+
 with st.container():
     st.subheader("University of Vienna")
     st.title("HARNet | Research Project")
