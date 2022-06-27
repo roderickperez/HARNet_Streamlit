@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import tensorflow as tf
+#import tensorflow as tf
 
-DTYPE = tf.float32
+#DTYPE = tf.float32
 pd.options.display.float_format = '{:,e}'.format
 pd.options.display.width = 0
 
