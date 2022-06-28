@@ -7,6 +7,7 @@ import datetime
 from plotly.subplots import make_subplots
 from typing import List
 from dataclasses import field
+import streamlit_option_menu
 from streamlit_option_menu import option_menu
 
 pd.options.display.float_format = '{:,e}'.format
