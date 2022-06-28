@@ -112,21 +112,7 @@ def plot(data):
     with col2:
         st.plotly_chart(fig2)
         
-def postProcessPlot(data):
- 
-    fig1 = go.Figure()
-    # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    xAxis1 = df_symbol_['DATE']
-    yAxis1 = df_symbol_['rv5_ss']
-    fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
-    
-    df_preProcess_temp_ = df_preProcess_temp.dropna()
-    yAxis2 = df_preProcess_temp_
-    fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Pre Processed ', line=dict(color="#21ff00")))
-   
-    st.plotly_chart(fig1)
-    
+
 
 if selected == 'Data':
     st.subheader('Data')
@@ -135,29 +121,42 @@ if selected == 'Data':
 elif selected == 'Stats':
     st.subheader('Stats')
     st.write("Symbol: ", symbol)
-    st.write(df_symbol_.describe())
+    st.dataframe(df_symbol_.describe())
 
 elif selected == 'Pre-Process':
-    col1, col2 = st.columns([2,4])
     
-    with col1:
-        st.subheader('Parameters')
-        preProcessMethod = st.selectbox('Pre-Process Methods', ['Moving Average', 'Moving Median', 'Moving Standard Deviation'])
+    def postProcessPlot(dataOriginal):
+ 
+        fig1 = go.Figure()
+        # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
         
-        if preProcessMethod == 'Moving Average':
-            window_ = st.slider('Window Size', 1, 10, 1)
-            df_preProcess_temp = df_symbol_['rv5_ss'].rolling(window=window_).mean()
+        xAxis1 = dataOriginal['DATE']
+        yAxis1 = dataOriginal['rv5_ss']
+        fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+        
+        df_preProcess_temp_ = df_preProcess_temp.dropna()
+        yAxis2 = df_preProcess_temp_
+        fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Pre Processed ', line=dict(color="#21ff00")))
+    
+        st.plotly_chart(fig1)
+    
+    
+    st.sidebar.subheader("Pre-Process Parameters")
+    
+    preProcessMethod = st.sidebar.selectbox('Methods', ['Moving Average', 'Moving Median', 'Moving Standard Deviation'])
+    
+    if preProcessMethod == 'Moving Average':
+        window_ = st.sidebar.slider('Window Size', 1, 10, 1)
+        df_preProcess_temp = df_symbol_['rv5_ss'].rolling(window=window_).mean()
+
+        
+        if st.sidebar.button('Add to dataframe'):
+            df_symbol_['rv5_ss_MovAve'] = df_preProcess_temp
+            st.sidebar.success('Data has been added to the dataframe successfully.')
             
-            if st.button('Add to dataframe'):
-                df_symbol_['rv5_ss_MovAve'] = df_preProcess_temp
-                st.success('Data has been added to the dataframe successfully.')
-            
-    with col2:
-        postProcessPlot(df_preProcess_temp)
+        postProcessPlot(df_symbol_)
         
-        
-    
-    
+
 elif selected == 'Plot':
     plot(df_symbol_)
     
@@ -165,87 +164,140 @@ elif selected == 'Trend':
     pass
 
 else:
-    pass
+    st.sidebar.subheader(" Forecast Parameters")
+
+    st.sidebar.expander("Model")
+    model_ = st.sidebar.selectbox("Select Model", ["LSTM", "Prophet", "AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "HARNet"])
+
+    modelExpander = st.sidebar.expander("Parameters")
 
 
-##########################################
-
-st.sidebar.subheader("Parameters")
-
-st.sidebar.expander("Model")
-model_ = st.sidebar.selectbox("Select Model", ["LSTM", "Prophet", "AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "HARNet"])
-
-modelExpander = st.sidebar.expander("Parameters")
+    if model_ == "LSTM":
+        pass
 
 
-if model_ == "LSTM":
-    pass
-
-
-elif model_ == "Prophet":
-    pass
-
-
-
-elif model_ == "HARNet":
-    filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
-    bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
-    activation_deconv_ = modelExpander.selectbox("Activation Function", ["relu", "sigmoid", "tanh"], index = 0)
-
-    optimizationExpander =  st.sidebar.expander("Optimization")
-    learning_rate_ = optimizationExpander.slider("Learning Rate (10e3)", 1, 1000, 1)
-    epochs_ = optimizationExpander.slider("Epochs", 10, 100000, 10)
-    steps_per_epoch_ = optimizationExpander.slider("Steps per Epochs", 1, 10, 1)
-    labelLength_ = optimizationExpander.slider("Label Length", 1, 10, 1)
-    batch_size_ = optimizationExpander.slider("Batch Size", 1, 10, 1)
-    optimizer_ = optimizationExpander.selectbox("Optimizer", ["Adam", "RMSprop", "SGD"], index = 0)
-
-    preProcessingExpander =  st.sidebar.expander("Pre-Processing Parameters")
-    scaler_ = preProcessingExpander.selectbox("Scaler", ["MinMax"], index = 0)
-
-
-    # UTILS
-    class HARNetCfg:
-        # Model
-        model: str = model_
-        filters_dconv: int = int(filter_conv_)
-        use_bias_dconv: bool = bias_
-        activation_dconv: str = activation_deconv_
-        lags: List[int] = field(default_factory=lambda: [1, 5, 20])
-
-        # Optimization
-        learning_rate: float = (learning_rate_)/1000
-        epochs: int = epochs_
-        steps_per_epoch: int = steps_per_epoch_
-        label_length: int = labelLength_
-        batch_size: int = batch_size_
-        optimizer: str = optimizer_
-        loss: str = "QLIKE"
-        verbose: int = 1
-        baseline_fit: str = "WLS"
-
-        # Data
-        # path_MAN: str = "./data/MAN_data.csv"
-        # asset: str = ".DJI"
-        # include_sv: bool = False
-        # start_year_train: int = 2012
-        # n_years_train: int = 4
-        # start_year_test: int = 2016
-        # n_years_test: int = 1
-
-        # Preprocessing
-        scaler: str = scaler_
-        scaler_min: float = 0.0
-        scaler_max: float = 0.001
-
-        # Save Paths
-        tb_path: str = "./tb/"
-        save_path: str = "./results/"
-        save_best_weights: bool = False
-
-        # Misc
-        run_eagerly: bool = False
+    elif model_ == "Prophet":
+        # Keep only two columns
+        df_prophet = df_symbol_[['DATE', 'rv5_ss']]
+        # Rename columns
+        df_prophet.columns = ['ds', 'y']
+        
     
+        # Phophet Model
+        prophetExpander =  st.sidebar.expander("Parameters")
+        interval_width_ = prophetExpander.slider("Interval Width (%)", min_value = 0.0, max_value = 1.0, step = 0.1, value = 0.95)
+        daily_seasonality_ = prophetExpander.radio("Daily Seasonality", [True, False], index = 1)
+        weekly_seasonality_ = prophetExpander.radio("Weekly Seasonality", [True, False], index = 1)
+        yearly_seasonality_ = prophetExpander.radio("Yearly Seasonality", [True, False], index = 1)
+        
+        if st.sidebar.button('Forecast'):
+            # Create Model
+            m = Prophet(interval_width = interval_width_, daily_seasonality = daily_seasonality_, weekly_seasonality = weekly_seasonality_, yearly_seasonality = yearly_seasonality_)
+            model = m.fit(df_prophet)
+
+            # Forecast
+            
+            periods_ = prophetExpander.slider("Periods (days)", min_value = 1, max_value = 3650, step = 1, value = 365)
+            prophetFuture = m.make_future_dataframe(periods = periods_)
+            prophetForecast = m.predict(prophetFuture)
+            
+            showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1)
+            
+            if showProphetForecast_ == True:
+                st.subheader("Forecast")
+                st.dataframe(prophetForecast)
+                
+            # Save Forecast into new df
+            prophetForecast_ = prophetForecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+            
+            def postProphetFocast(dataOriginal, dataForecast):
+        
+                fig1 = go.Figure()
+                # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+                
+                xAxis1 = dataOriginal['DATE']
+                yAxis1 = dataOriginal['rv5_ss']
+                fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff", width=1)))
+                
+                xAxis2 = dataForecast['ds']
+                yAxis2 = dataForecast['yhat']
+                fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+                
+                fig1.update_layout(
+                    autosize = False,
+                    width = 1300,
+                    height = 500)
+                
+                fig1.layout.update(
+                    title_text = "Forecast",
+                    xaxis_rangeslider_visible = True)
+                
+                st.plotly_chart(fig1)
+                
+            postProphetFocast(df_symbol_, prophetForecast_)
+        
+
+
+
+    elif model_ == "HARNet":
+        filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
+        bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
+        activation_deconv_ = modelExpander.selectbox("Activation Function", ["relu", "sigmoid", "tanh"], index = 0)
+
+        optimizationExpander =  st.sidebar.expander("Optimization")
+        learning_rate_ = optimizationExpander.slider("Learning Rate (10e3)", min_value = 0.0001, max_value = 1.0, step = 0.0001, value = 0.0001)
+        epochs_ = optimizationExpander.slider("Epochs", 10, 100000, 10)
+        steps_per_epoch_ = optimizationExpander.slider("Steps per Epochs", 1, 10, 1)
+        labelLength_ = optimizationExpander.slider("Label Length", 1, 10, 1)
+        batch_size_ = optimizationExpander.slider("Batch Size", 1, 10, 1)
+        optimizer_ = optimizationExpander.selectbox("Optimizer", ["Adam", "RMSprop", "SGD"], index = 0)
+
+        preProcessingExpander =  st.sidebar.expander("Pre-Processing Parameters")
+        scaler_ = preProcessingExpander.selectbox("Scaler", ["MinMax"], index = 0)
+
+
+        # UTILS
+        class HARNetCfg:
+            # Model
+            model: str = model_
+            filters_dconv: int = int(filter_conv_)
+            use_bias_dconv: bool = bias_
+            activation_dconv: str = activation_deconv_
+            lags: List[int] = field(default_factory=lambda: [1, 5, 20])
+
+            # Optimization
+            learning_rate: float = (learning_rate_)/1000
+            epochs: int = epochs_
+            steps_per_epoch: int = steps_per_epoch_
+            label_length: int = labelLength_
+            batch_size: int = batch_size_
+            optimizer: str = optimizer_
+            loss: str = "QLIKE"
+            verbose: int = 1
+            baseline_fit: str = "WLS"
+
+            # Data
+            # path_MAN: str = "./data/MAN_data.csv"
+            # asset: str = ".DJI"
+            # include_sv: bool = False
+            # start_year_train: int = 2012
+            # n_years_train: int = 4
+            # start_year_test: int = 2016
+            # n_years_test: int = 1
+
+            # Preprocessing
+            scaler: str = scaler_
+            scaler_min: float = 0.0
+            scaler_max: float = 0.001
+
+            # Save Paths
+            tb_path: str = "./tb/"
+            save_path: str = "./results/"
+            save_best_weights: bool = False
+
+            # Misc
+            run_eagerly: bool = False
+        
 with st.sidebar.container():
     st.sidebar.subheader("University of Vienna | Research Project")
     st.sidebar.write("###### App Authors: Roderick Perez & Le Thi (Janie) Thuy Trang")
