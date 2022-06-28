@@ -9,6 +9,9 @@ from typing import List
 from dataclasses import field
 import streamlit_option_menu
 from streamlit_option_menu import option_menu
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+from prophet import Prophet
 
 pd.options.display.float_format = '{:,e}'.format
 pd.options.display.width = 0
@@ -24,11 +27,8 @@ st.set_page_config(
 # ---- Header ----
 
 with st.container():
-    st.subheader("University of Vienna | Research Project")
-    st.write("##### Roderick Perez & Le Thi (Janie) Thuy Trang")
     st.title("HARNet")
-    st.write("##### Heterogeneous Autoregressive Model of Realized Volatility")
-    st.write("Reference: [HARNet](https://arxiv.org/abs/1903.04909)")
+    st.write("##### Heterogeneous Autoregressive Model of Realized Volatility | Reference: [HARNet](https://arxiv.org/abs/1903.04909)")
 
 ####
 
@@ -79,16 +79,12 @@ df_symbol_ = df_symbol_.loc[(df_symbol_['DATE'] > d_initial) & (df_symbol_['DATE
 # Horizontal Menu
 selected = option_menu(
     menu_title = None,
-    options = ["Data", "Plot", "Forecast"],
-    icons = ['table', 'graph-up', 'share'],
+    options = ["Data", "Stats", "Pre-Process", "Plot", "Trend", "Forecast"],
+    icons = ['table', 'clipboard-data', 'sliders', 'graph-up', 'activity', 'share'],
     orientation = "horizontal",
-    default_index = 1,
+    default_index = 3,
 )
-    
-if selected == 'Data':
-    st.subheader('Data')
-    st.dataframe(df_symbol_)
-    
+   
 def plot(data):
     col1, col2 = st.columns(2)
     
@@ -97,14 +93,10 @@ def plot(data):
     
     xAxis = data['DATE']
     fig1.add_trace(go.Scatter( x = xAxis, y = data['rv5_ss'], name = 'Realized Variance (rv5_ss)'))
-    # fig1.add_trace(go.Scatter( x = xAxis, y = data['open_price'], name = 'Open Price'), secondary_y=True)
-    # fig1.add_trace(go.Scatter( x = xAxis, y = data['close_price'], name = 'Close Price'), secondary_y=True)
+
     fig1.layout.update(
         title_text = "Realized Variance",
         xaxis_rangeslider_visible = True)
-    # Set y-axes titles
-    # fig1.update_yaxes(title_text="Price", secondary_y=False)
-    # fig1.update_yaxes(title_text="Variance", secondary_y=True)
     
     with col1:
         st.plotly_chart(fig1)
@@ -119,22 +111,82 @@ def plot(data):
     
     with col2:
         st.plotly_chart(fig2)
-
-if selected == 'Plot':
+        
+def postProcessPlot(data):
+ 
+    fig1 = go.Figure()
+    # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
+    xAxis1 = df_symbol_['DATE']
+    yAxis1 = df_symbol_['rv5_ss']
+    fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+    
+    df_preProcess_temp_ = df_preProcess_temp.dropna()
+    yAxis2 = df_preProcess_temp_
+    fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Pre Processed ', line=dict(color="#21ff00")))
+   
+    st.plotly_chart(fig1)
+    
+
+if selected == 'Data':
+    st.subheader('Data')
+    st.dataframe(df_symbol_)
+       
+elif selected == 'Stats':
+    st.subheader('Stats')
+    st.write("Symbol: ", symbol)
+    st.write(df_symbol_.describe())
+
+elif selected == 'Pre-Process':
+    col1, col2 = st.columns([2,4])
+    
+    with col1:
+        st.subheader('Parameters')
+        preProcessMethod = st.selectbox('Pre-Process Methods', ['Moving Average', 'Moving Median', 'Moving Standard Deviation'])
+        
+        if preProcessMethod == 'Moving Average':
+            window_ = st.slider('Window Size', 1, 10, 1)
+            df_preProcess_temp = df_symbol_['rv5_ss'].rolling(window=window_).mean()
+            
+            if st.button('Add to dataframe'):
+                df_symbol_['rv5_ss_MovAve'] = df_preProcess_temp
+                st.success('Data has been added to the dataframe successfully.')
+            
+    with col2:
+        postProcessPlot(df_preProcess_temp)
+        
+        
+    
+    
+elif selected == 'Plot':
     plot(df_symbol_)
+    
+elif selected == 'Trend':
+    pass
+
+else:
+    pass
+
 
 ##########################################
 
 st.sidebar.subheader("Parameters")
 
 st.sidebar.expander("Model")
-model_ = st.sidebar.selectbox("Select Model", ["LSTM", "HARNet", "Prophet"])
+model_ = st.sidebar.selectbox("Select Model", ["LSTM", "Prophet", "AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "HARNet"])
 
 modelExpander = st.sidebar.expander("Parameters")
 
+
 if model_ == "LSTM":
     pass
+
+
+elif model_ == "Prophet":
+    pass
+
+
+
 elif model_ == "HARNet":
     filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
     bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
@@ -194,4 +246,8 @@ elif model_ == "HARNet":
         # Misc
         run_eagerly: bool = False
     
-   
+with st.sidebar.container():
+    st.sidebar.subheader("University of Vienna | Research Project")
+    st.sidebar.write("###### App Authors: Roderick Perez & Le Thi (Janie) Thuy Trang")
+    st.sidebar.write("###### Faculty Advisor: Xandro Bayer")
+    st.sidebar.write("###### Updated: 28/6/2022")

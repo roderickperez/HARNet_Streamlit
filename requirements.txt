@@ -1,3 +1,5 @@
 streamlit==1.10.0
 plotly-express==0.4.1
 streamlit-option-menu==0.3.2
+pystan==2.19.1.1
+prophet==1.1.0
