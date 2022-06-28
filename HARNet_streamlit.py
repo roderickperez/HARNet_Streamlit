@@ -30,51 +30,58 @@ st.sidebar.title("HARNet Menu")
 
 st.sidebar.subheader("Select a dataset")
 
-dataset = st.sidebar.selectbox("Dataset", ["MAN", "OXFORD"]) # , "USEPUINDXD", "VIXCLS"
+dataset = st.sidebar.selectbox("Dataset", ["OXFORD"]) # , "USEPUINDXD", "VIXCLS"
 
 # Load Data
 
-if dataset == "OXFORD":
-    df = pd.read_csv("data/MAN_data_edit.csv") # Read .csv file
-    
-    symbolsList = df['Symbol'].unique()
-    
-    symbol = st.sidebar.selectbox("Symbol", index = 5, options = symbolsList)
+df = pd.read_csv("data/oxfordmanrealizedvolatilityindices.csv") # Read .csv file
+# df = df.rename(columns ={'Unnamed: 0':'DATE'})
+df['DATE'] = pd.to_datetime(df['Unnamed: 0'],utc=True).dt.date
 
-elif dataset == "MAN":
-    df = pd.read_csv("data/MAN_data_edit.csv") # Read .csv file
+#df = df[["DATE","Symbol","rv5_ss"]]
 
-@st.cache
-def plot(df):
-    if dataset == "OXFORD":
-        fig = go.Figure()
-        xAxis = df['DATE']
-        yAxis = st.sidebar.selectbox('Select Y-Axis value', index = 15, options = df.columns[1:])
-        fig.add_trace(go.Scatter( x = xAxis, y = yAxis))
-        fig.layout.update(
-            title_text = "Realized Variance Time Series | Dow Jones Industrial Average Index",
-            xaxis_rangeslider_visible = True)
-        st.plotly_chart(fig)
-       
+
+symbolsList = df['Symbol'].unique()
+
+symbol = st.sidebar.selectbox("Symbol", index = 6, options = symbolsList)
+
+# group the data by stock symbol
+
+df_symbol = df.groupby(['Symbol'])
+df_symbol_ = df_symbol.get_group(symbol)
+
+# Show Data
 showData = st.sidebar.radio(
      "Show Data Table",
      ('True', 'False'), index = 1, horizontal = True)
-
-d_initial = st.sidebar.date_input(
-     "Initial Date",
-     datetime.date(2001, 1, 9))
-
-d_final= st.sidebar.date_input(
-     "Final Date",
-     datetime.date(2017, 12, 17))
-
-if d_initial < d_final:
-    st.sidebar.success('Start date: `%s`\n\nEnd date:`%s`' % (d_initial, d_final))
-else:
-    st.sidebar.error('Error: End date must fall after start date.')
-
+    
 if showData == 'True':
     st.subheader('Data')
-    st.dataframe(df)
+    st.dataframe(df_symbol_)
+    
+def plot(data):
+    fig = go.Figure()
+    xAxis = data['DATE']
+    yAxis = data['rv5_ss']
+    fig.add_trace(go.Scatter( x = xAxis, y = yAxis))
+    fig.layout.update(
+        title_text = "Realized Variance Time Series | Dow Jones Industrial Average Index",
+        xaxis_rangeslider_visible = True)
+    st.plotly_chart(fig)
+       
 
-plot(df)
+# d_initial = st.sidebar.date_input(
+#      "Initial Date",
+#      datetime.date(2001, 1, 9))
+
+# d_final= st.sidebar.date_input(
+#      "Final Date",
+#      datetime.date(2017, 12, 17))
+
+# if d_initial < d_final:
+#     st.sidebar.success('Start date: `%s`\n\nEnd date:`%s`' % (d_initial, d_final))
+# else:
+#     st.sidebar.error('Error: End date must fall after start date.')
+
+
+plot(df_symbol_)
