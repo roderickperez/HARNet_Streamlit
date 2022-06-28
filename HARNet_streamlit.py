@@ -12,6 +12,10 @@ from streamlit_option_menu import option_menu
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from prophet import Prophet
+from statsmodels.tsa.stattools import acf, pacf
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.seasonal import seasonal_decompose
+
 
 pd.options.display.float_format = '{:,e}'.format
 pd.options.display.width = 0
@@ -28,7 +32,7 @@ st.set_page_config(
 
 with st.container():
     st.title("HARNet")
-    st.write("##### Heterogeneous Autoregressive Model of Realized Volatility | Reference: [HARNet](https://arxiv.org/abs/1903.04909)")
+    st.write("##### Heterogeneous Autoregressive Model of Realized Volatility | Reference: [HARNet](https://arxiv.org/abs/2205.07719)")
 
 ####
 
@@ -74,12 +78,14 @@ if d_initial > d_final:
 ##### Select subgroup between dates
 df_symbol_ = df_symbol_.loc[(df_symbol_['DATE'] > d_initial) & (df_symbol_['DATE'] <= d_final)]
 
+variableList = df_symbol_.columns.tolist()
+variable = st.sidebar.selectbox("Variable", index = 18, options = variableList)
 
 ################################
 # Horizontal Menu
 selected = option_menu(
     menu_title = None,
-    options = ["Data", "Stats", "Pre-Process", "Plot", "Trend", "Forecast"],
+    options = ["Data", "Stats", "Pre-Process", "Plot", "Analysis", "Forecast"],
     icons = ['table', 'clipboard-data', 'sliders', 'graph-up', 'activity', 'share'],
     orientation = "horizontal",
     default_index = 3,
@@ -92,10 +98,10 @@ def plot(data):
     # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
     xAxis = data['DATE']
-    fig1.add_trace(go.Scatter( x = xAxis, y = data['rv5_ss'], name = 'Realized Variance (rv5_ss)'))
+    fig1.add_trace(go.Scatter( x = xAxis, y = data[variable], name = 'Selected Variable'))
 
     fig1.layout.update(
-        title_text = "Realized Variance",
+        title_text = "Selected Variable",
         xaxis_rangeslider_visible = True)
     
     with col1:
@@ -128,10 +134,9 @@ elif selected == 'Pre-Process':
     def postProcessPlot(dataOriginal):
  
         fig1 = go.Figure()
-        # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
         
         xAxis1 = dataOriginal['DATE']
-        yAxis1 = dataOriginal['rv5_ss']
+        yAxis1 = dataOriginal[variable]
         fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
         
         df_preProcess_temp_ = df_preProcess_temp.dropna()
@@ -146,8 +151,8 @@ elif selected == 'Pre-Process':
     preProcessMethod = st.sidebar.selectbox('Methods', ['Moving Average', 'Moving Median', 'Moving Standard Deviation'])
     
     if preProcessMethod == 'Moving Average':
-        window_ = st.sidebar.slider('Window Size', 1, 10, 1)
-        df_preProcess_temp = df_symbol_['rv5_ss'].rolling(window=window_).mean()
+        window_ = st.sidebar.slider('Window Size', 1, 100, 1)
+        df_preProcess_temp = df_symbol_[variable].rolling(window=window_).mean()
 
         
         if st.sidebar.button('Add to dataframe'):
@@ -160,8 +165,82 @@ elif selected == 'Pre-Process':
 elif selected == 'Plot':
     plot(df_symbol_)
     
-elif selected == 'Trend':
-    pass
+elif selected == 'Analysis':
+    
+    analysisMethod = st.sidebar.selectbox('Analysis', ['Autocorrelation', 'Partial Autocorrelation', 'Trend'])
+    
+    if analysisMethod == 'Autocorrelation':
+
+        # Autocorrelation
+        lags_ = st.sidebar.number_input("Please enter the order of autocorrelation:", min_value=1, max_value=100, value=1, step=1)
+        data_acf = acf(df_symbol_[variable], nlags=lags_)
+        
+        acfValues = st.sidebar.radio("Show Autocorrelation coefficient", ["Yes", "No"], index=1, horizontal = True)
+        
+        fig_acf = plot_acf(df_symbol_[variable])
+        st.pyplot(fig_acf)
+        
+        if acfValues == 'Yes':
+            
+            st.write("Autocorrelation coefficient:", data_acf)  
+        
+    
+    elif analysisMethod == 'Partial Autocorrelation':
+
+        # Partial Autocorrelation
+        lags_ = st.sidebar.number_input("Please enter the order of autocorrelation:", min_value=1, max_value=100, value=1, step=1)
+        data_pacf = pacf(df_symbol_[variable])
+        
+        pacfValues = st.sidebar.radio("Show Partial Autocorrelation coefficient", ["Yes", "No"], index=1, horizontal = True)
+        
+        fig_pacf = plot_pacf(df_symbol_[variable])
+        st.pyplot(fig_pacf)
+        
+        if pacfValues == 'Yes':
+            
+            st.write("Partial Autocorrelation coefficient:", data_pacf)  
+            
+    elif analysisMethod == 'Trend':
+
+        # Seasonal Decompose
+        # st.write(df_symbol_)
+        # seasonal_df = df_symbol_['rv5_ss']
+        # calculate the trend component
+        window_ = st.sidebar.slider('Window Size', 1, 100, 1)
+        center_ = st.sidebar.radio('Center', [True, False], index=0, horizontal = True)
+        df_symbol_["trend"] = df_symbol_[variable].rolling(window=window_, center=True).mean()
+
+        # detrend the series
+        df_symbol_["detrended"] = df_symbol_[variable] - df_symbol_["trend"]
+
+        # calculate the seasonal component
+        df_symbol_.index = pd.to_datetime(df_symbol_.index)
+        df_symbol_["month"] = df_symbol_.index.month
+        df_symbol_["seasonality"] = df_symbol_.groupby("month")["detrended"].transform("mean")
+
+        # get the residuals
+        df_symbol_["resid"] = df_symbol_["detrended"] - df_symbol_["seasonality"]
+        
+        # st.write(df_symbol_)
+
+
+        def seasonalityPlot(dataOriginal):
+ 
+            fig1 = go.Figure()
+            
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal[variable], name = 'Original'))
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal['trend'], name = 'Trend'))
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal['detrended'], name = 'Detrended'))
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal['month'], name = 'Month'))
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal['seasonality'], name = 'Seasonality'))
+            fig1.add_trace(go.Scatter( x = dataOriginal['DATE'], y = dataOriginal['resid'], name = 'Residual'))
+            
+            fig1.layout.update(xaxis_rangeslider_visible = True)
+        
+        
+            st.plotly_chart(fig1)
+                      
+        seasonalityPlot(df_symbol_)
 
 else:
     st.sidebar.subheader(" Forecast Parameters")
@@ -178,7 +257,7 @@ else:
 
     elif model_ == "Prophet":
         # Keep only two columns
-        df_prophet = df_symbol_[['DATE', 'rv5_ss']]
+        df_prophet = df_symbol_[['DATE', variable]]
         # Rename columns
         df_prophet.columns = ['ds', 'y']
         
@@ -186,9 +265,9 @@ else:
         # Phophet Model
         prophetExpander =  st.sidebar.expander("Parameters")
         interval_width_ = prophetExpander.slider("Interval Width (%)", min_value = 0.0, max_value = 1.0, step = 0.1, value = 0.95)
-        daily_seasonality_ = prophetExpander.radio("Daily Seasonality", [True, False], index = 1)
-        weekly_seasonality_ = prophetExpander.radio("Weekly Seasonality", [True, False], index = 1)
-        yearly_seasonality_ = prophetExpander.radio("Yearly Seasonality", [True, False], index = 1)
+        daily_seasonality_ = prophetExpander.radio("Daily Seasonality", [True, False], index = 1, horizontal = True)
+        weekly_seasonality_ = prophetExpander.radio("Weekly Seasonality", [True, False], index = 1, horizontal = True)
+        yearly_seasonality_ = prophetExpander.radio("Yearly Seasonality", [True, False], index = 1, horizontal = True)
         
         if st.sidebar.button('Forecast'):
             # Create Model
@@ -201,7 +280,7 @@ else:
             prophetFuture = m.make_future_dataframe(periods = periods_)
             prophetForecast = m.predict(prophetFuture)
             
-            showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1)
+            showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1, horizontal = True)
             
             if showProphetForecast_ == True:
                 st.subheader("Forecast")
@@ -216,7 +295,7 @@ else:
                 # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
                 
                 xAxis1 = dataOriginal['DATE']
-                yAxis1 = dataOriginal['rv5_ss']
+                yAxis1 = dataOriginal[variable]
                 fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff", width=1)))
                 
                 xAxis2 = dataForecast['ds']
@@ -241,7 +320,7 @@ else:
 
     elif model_ == "HARNet":
         filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
-        bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
+        bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1, horizontal = True)
         activation_deconv_ = modelExpander.selectbox("Activation Function", ["relu", "sigmoid", "tanh"], index = 0)
 
         optimizationExpander =  st.sidebar.expander("Optimization")
