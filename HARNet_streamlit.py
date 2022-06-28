@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from plotly import graph_objects as go
 import datetime
+from plotly.subplots import make_subplots
 
 pd.options.display.float_format = '{:,e}'.format
 pd.options.display.width = 0
@@ -12,7 +13,7 @@ st.set_page_config(
      page_title = "HARNet | Research Project",
      page_icon=":chart_with_upwards_trend:",
      layout="wide",
-     initial_sidebar_state="expanded"
+     #initial_sidebar_state="expanded"
  )
 
 # ---- Header ----
@@ -61,12 +62,19 @@ if showData == 'True':
     
 def plot(data):
     fig = go.Figure()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
     xAxis = data['DATE']
-    yAxis = data['rv5_ss']
-    fig.add_trace(go.Scatter( x = xAxis, y = yAxis))
+    fig.add_trace(go.Scatter( x = xAxis, y = data['rv5_ss'], name = 'rv5_ss'))
+    fig.add_trace(go.Scatter( x = xAxis, y = data['open_price'], name = 'Open Price'), secondary_y=True)
+    fig.add_trace(go.Scatter( x = xAxis, y = data['close_price'], name = 'Close Price'), secondary_y=True)
     fig.layout.update(
         title_text = "Realized Variance Time Series | Dow Jones Industrial Average Index",
         xaxis_rangeslider_visible = True)
+    # Set y-axes titles
+    fig.update_yaxes(title_text="Price", secondary_y=False)
+    fig.update_yaxes(title_text="Variance", secondary_y=True)
+    
     st.plotly_chart(fig)
        
 
