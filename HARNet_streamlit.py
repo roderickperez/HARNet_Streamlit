@@ -1,3 +1,4 @@
+from operator import index
 from requests import options
 import streamlit as st
 import pandas as pd
@@ -6,6 +7,7 @@ import datetime
 from plotly.subplots import make_subplots
 from typing import List
 from dataclasses import field
+from streamlit_option_menu import option_menu
 
 pd.options.display.float_format = '{:,e}'.format
 pd.options.display.width = 0
@@ -20,11 +22,11 @@ st.set_page_config(
 
 # ---- Header ----
 
-st.write("HARNet Project")
-
 with st.container():
-    st.subheader("University of Vienna")
-    st.title("HARNet | Research Project")
+    st.subheader("University of Vienna | Research Project")
+    st.write("##### Roderick Perez & Le Thi (Janie) Thuy Trang")
+    st.title("HARNet")
+    st.write("##### Heterogeneous Autoregressive Model of Realized Volatility")
     st.write("Reference: [HARNet](https://arxiv.org/abs/1903.04909)")
 
 ####
@@ -35,7 +37,7 @@ datasetExpander =  st.sidebar.expander("Dataset")
 
 datasetExpander.subheader("Select a dataset")
 
-dataset = datasetExpander.selectbox("Dataset", ["OXFORD"]) # , "USEPUINDXD", "VIXCLS"
+dataset = datasetExpander.selectbox("Dataset", ["OXFORD"])
 
 # Load Data
 
@@ -71,100 +73,124 @@ if d_initial > d_final:
 ##### Select subgroup between dates
 df_symbol_ = df_symbol_.loc[(df_symbol_['DATE'] > d_initial) & (df_symbol_['DATE'] <= d_final)]
 
-# Show Data
-showData = datasetExpander.radio(
-     "Show Data Table",
-     ('True', 'False'), index = 1, horizontal = True)
+
+################################
+# Horizontal Menu
+selected = option_menu(
+    menu_title = None,
+    options = ["Data", "Plot", "Forecast"],
+    icons = ['table', 'graph-up', 'share'],
+    orientation = "horizontal",
+    default_index = 1,
+)
     
-if showData == 'True':
+if selected == 'Data':
     st.subheader('Data')
     st.dataframe(df_symbol_)
     
 def plot(data):
     col1, col2 = st.columns(2)
     
-    fig = go.Figure()
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig1 = go.Figure()
+    # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
     xAxis = data['DATE']
-    fig.add_trace(go.Scatter( x = xAxis, y = data['rv5_ss'], name = 'Realized Variance (rv5_ss)'))
-    fig.add_trace(go.Scatter( x = xAxis, y = data['open_price'], name = 'Open Price'), secondary_y=True)
-    fig.add_trace(go.Scatter( x = xAxis, y = data['close_price'], name = 'Close Price'), secondary_y=True)
-    fig.layout.update(
-        title_text = "Realized Variance Time Series | Dow Jones Industrial Average Index",
+    fig1.add_trace(go.Scatter( x = xAxis, y = data['rv5_ss'], name = 'Realized Variance (rv5_ss)'))
+    # fig1.add_trace(go.Scatter( x = xAxis, y = data['open_price'], name = 'Open Price'), secondary_y=True)
+    # fig1.add_trace(go.Scatter( x = xAxis, y = data['close_price'], name = 'Close Price'), secondary_y=True)
+    fig1.layout.update(
+        title_text = "Realized Variance",
         xaxis_rangeslider_visible = True)
     # Set y-axes titles
-    fig.update_yaxes(title_text="Price", secondary_y=False)
-    fig.update_yaxes(title_text="Variance", secondary_y=True)
+    # fig1.update_yaxes(title_text="Price", secondary_y=False)
+    # fig1.update_yaxes(title_text="Variance", secondary_y=True)
     
     with col1:
-        st.plotly_chart(fig)
+        st.plotly_chart(fig1)
         
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter( x = xAxis, y = data['open_price'], name = 'Open Price'))
+    fig2.add_trace(go.Scatter( x = xAxis, y = data['close_price'], name = 'Close Price'))
+    
+    fig2.layout.update(
+        title_text = "Open | Close Price",
+        xaxis_rangeslider_visible = True)
+    
     with col2:
-        st.plotly_chart(fig)
-       
-plot(df_symbol_)
+        st.plotly_chart(fig2)
+
+if selected == 'Plot':
+    
+    plot(df_symbol_)
 
 ##########################################
 
 st.sidebar.subheader("Parameters")
 
-modelExpander =  st.sidebar.expander("Model")
-model_ = modelExpander.selectbox("Select Model", ["HARNet", "Prophet"])
-filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
-bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
-activation_deconv_ = modelExpander.selectbox("Activation Function", ["relu", "sigmoid", "tanh"], index = 0)
+st.sidebar.expander("Model")
+model_ = st.sidebar.selectbox("Select Model", ["LSTM", "HARNet", "Prophet"])
 
-optimizationExpander =  st.sidebar.expander("Optimization")
-learning_rate_ = optimizationExpander.slider("Learning Rate (10e3)", 1, 1000, 1)
-epochs_ = optimizationExpander.slider("Epochs", 10, 100000, 10)
-steps_per_epoch_ = optimizationExpander.slider("Steps per Epochs", 1, 10, 1)
-labelLength_ = optimizationExpander.slider("Label Length", 1, 10, 1)
-batch_size_ = optimizationExpander.slider("Batch Size", 1, 10, 1)
-optimizer_ = optimizationExpander.selectbox("Optimizer", ["Adam", "RMSprop", "SGD"], index = 0)
+modelExpander = st.sidebar.expander("Parameters")
 
-preProcessingExpander =  st.sidebar.expander("Pre-Processing Parameters")
-scaler_ = preProcessingExpander.selectbox("Scaler", ["MinMax"], index = 0)
+if model_ == "LSTM":
+    pass
+elif model_ == "HARNet":
+    filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
+    bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1)
+    activation_deconv_ = modelExpander.selectbox("Activation Function", ["relu", "sigmoid", "tanh"], index = 0)
+
+    optimizationExpander =  st.sidebar.expander("Optimization")
+    learning_rate_ = optimizationExpander.slider("Learning Rate (10e3)", 1, 1000, 1)
+    epochs_ = optimizationExpander.slider("Epochs", 10, 100000, 10)
+    steps_per_epoch_ = optimizationExpander.slider("Steps per Epochs", 1, 10, 1)
+    labelLength_ = optimizationExpander.slider("Label Length", 1, 10, 1)
+    batch_size_ = optimizationExpander.slider("Batch Size", 1, 10, 1)
+    optimizer_ = optimizationExpander.selectbox("Optimizer", ["Adam", "RMSprop", "SGD"], index = 0)
+
+    preProcessingExpander =  st.sidebar.expander("Pre-Processing Parameters")
+    scaler_ = preProcessingExpander.selectbox("Scaler", ["MinMax"], index = 0)
 
 
-# UTILS
-class HARNetCfg:
-    # Model
-    model: str = model_
-    filters_dconv: int = int(filter_conv_)
-    use_bias_dconv: bool = bias_
-    activation_dconv: str = activation_deconv_
-    lags: List[int] = field(default_factory=lambda: [1, 5, 20])
+    # UTILS
+    class HARNetCfg:
+        # Model
+        model: str = model_
+        filters_dconv: int = int(filter_conv_)
+        use_bias_dconv: bool = bias_
+        activation_dconv: str = activation_deconv_
+        lags: List[int] = field(default_factory=lambda: [1, 5, 20])
 
-    # Optimization
-    learning_rate: float = (learning_rate_)/1000
-    epochs: int = epochs_
-    steps_per_epoch: int = steps_per_epoch_
-    label_length: int = labelLength_
-    batch_size: int = batch_size_
-    optimizer: str = optimizer_
-    loss: str = "QLIKE"
-    verbose: int = 1
-    baseline_fit: str = "WLS"
+        # Optimization
+        learning_rate: float = (learning_rate_)/1000
+        epochs: int = epochs_
+        steps_per_epoch: int = steps_per_epoch_
+        label_length: int = labelLength_
+        batch_size: int = batch_size_
+        optimizer: str = optimizer_
+        loss: str = "QLIKE"
+        verbose: int = 1
+        baseline_fit: str = "WLS"
 
-    # Data
-    # path_MAN: str = "./data/MAN_data.csv"
-    # asset: str = ".DJI"
-    # include_sv: bool = False
-    # start_year_train: int = 2012
-    # n_years_train: int = 4
-    # start_year_test: int = 2016
-    # n_years_test: int = 1
+        # Data
+        # path_MAN: str = "./data/MAN_data.csv"
+        # asset: str = ".DJI"
+        # include_sv: bool = False
+        # start_year_train: int = 2012
+        # n_years_train: int = 4
+        # start_year_test: int = 2016
+        # n_years_test: int = 1
 
-    # Preprocessing
-    scaler: str = scaler_
-    scaler_min: float = 0.0
-    scaler_max: float = 0.001
+        # Preprocessing
+        scaler: str = scaler_
+        scaler_min: float = 0.0
+        scaler_max: float = 0.001
 
-    # Save Paths
-    tb_path: str = "./tb/"
-    save_path: str = "./results/"
-    save_best_weights: bool = False
+        # Save Paths
+        tb_path: str = "./tb/"
+        save_path: str = "./results/"
+        save_best_weights: bool = False
 
-    # Misc
-    run_eagerly: bool = False
+        # Misc
+        run_eagerly: bool = False
+    
+   
