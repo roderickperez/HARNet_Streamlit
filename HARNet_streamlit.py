@@ -14,7 +14,17 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from prophet import Prophet
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from statsmodels.tsa.seasonal import seasonal_decompose
+import numpy as np
+from sklearn.preprocessing import mean_squared_error
+
+###############################
+from statsmodels.tsa.ar_model import AutoReg # Autoregression (AR) model
+from statsmodels.tsa.stattools import adfuller, kpss
+
+
+
+
+######################
 
 
 pd.options.display.float_format = '{:,e}'.format
@@ -25,7 +35,7 @@ st.set_page_config(
      page_title = "HARNet | Research Project",
      page_icon=":chart_with_upwards_trend:",
      layout="wide",
-     #initial_sidebar_state="expanded"
+     initial_sidebar_state="expanded"
  )
 
 # ---- Header ----
@@ -78,8 +88,21 @@ if d_initial > d_final:
 ##### Select subgroup between dates
 df_symbol_ = df_symbol_.loc[(df_symbol_['DATE'] > d_initial) & (df_symbol_['DATE'] <= d_final)]
 
-variableList = df_symbol_.columns.tolist()
-variable = st.sidebar.selectbox("Variable", index = 18, options = variableList)
+variableOption = st.sidebar.radio("Options", ["Univariable", "Multivariable"], index = 0, horizontal = True)
+
+if variableOption == "Univariable":
+
+    variableList = df_symbol_.columns.tolist()
+    variable = st.sidebar.selectbox("Variable", index = 18, options = variableList)
+    
+else:
+    nVariables = st.sidebar.number_input("Select number of variables:", min_value=2, max_value=100, value=2, step=1)
+    
+    
+    
+    for n in range(nVariables):
+        variableList = df_symbol_.columns.tolist()
+        variable = st.sidebar.selectbox("Variable", index = 18, options = variableList)
 
 ################################
 # Horizontal Menu
@@ -167,17 +190,64 @@ elif selected == 'Plot':
     
 elif selected == 'Analysis':
     
-    analysisMethod = st.sidebar.selectbox('Analysis', ['Autocorrelation', 'Partial Autocorrelation', 'Trend'])
+    analysisMethod = st.sidebar.selectbox('Analysis', ['Test', 'Autocorrelation', 'Partial Autocorrelation', 'Trend'])
     
-    if analysisMethod == 'Autocorrelation':
+    if analysisMethod == 'Test':
+        
+        # Check stationarity
+        
+        if st.sidebar.button('ADF'): # (Reference: https://www.machinelearningplus.com/time-series/augmented-dickey-fuller-test/)
+            
+            dftest = adfuller(df_symbol_[variable], autolag='AIC')
+            
+            st.title('ADF Test Results:')            
+            st.write(f"**ADF Statistic**: {dftest[0]}")
+            st.write(f"**P-value**: {dftest[1]}")
+            st.write(f"**Num of lags**: {dftest[2]}")
+            st.write(f"**Num Obs used for ADF | Crit Values Calc**: {dftest[3]}")
+            st.write(f"**Critical Values**:")
+            for key, value in dftest[4].items():
+                st.write(f'{key}, {value}')
+                
+            if dftest[0] > 0.05:
+                st.error("*P-value* is **higher** than the *significance level* of 0.05 and hence there is no reason to **reject the null hypothesis** and take that the series is **NON-stationary**.")
+                st.snow()
+                
+            else:
+                st.success("*P-value* is very **less** than the *significance level* of 0.05 and hence we can **reject the null hypothesis** and take that the series is **stationary**.")
+                st.balloons()
+                
+        if st.sidebar.button('KPSS'): # (Reference: https://www.machinelearningplus.com/time-series/kpss-test-for-stationarity/)
+            
+            statistic, p_value, n_lags, critical_values = kpss(df_symbol_[variable])
+            
+            st.title('KPSS Test Results:')
+            st.write(f"**KPSS Statistic**: {statistic}")
+            st.write(f"**P-value**: {p_value}")
+            st.write(f"**Num of lags**: {n_lags}")
+            st.write(f"**Critical Values**:")
+            for key, value in critical_values.items():
+                st.write(f'{key}, {value}')
+                
+            if p_value > 0.05:
+                st.error("*P-value* is **higher** than the *significance level* of 0.05 and hence there is no reason to **reject the null hypothesis** and take that the series is **NON-stationary**.")
+                st.snow()
+                
+            else:
+                st.success("*P-value* is very **less** than the *significance level* of 0.05 and hence we can **reject the null hypothesis** and take that the series is **stationary**. Now, you can proceed with the **Modeling**.")
+                st.balloons()
+
+    
+    elif analysisMethod == 'Autocorrelation':         
+            
 
         # Autocorrelation
-        lags_ = st.sidebar.number_input("Please enter the order of autocorrelation:", min_value=1, max_value=100, value=1, step=1)
+        lags_ = st.sidebar.number_input("Please enter the # lags:", min_value=1, max_value=100, value=1, step=1)
         data_acf = acf(df_symbol_[variable], nlags=lags_)
         
         acfValues = st.sidebar.radio("Show Autocorrelation coefficient", ["Yes", "No"], index=1, horizontal = True)
         
-        fig_acf = plot_acf(df_symbol_[variable])
+        fig_acf = plot_acf(df_symbol_[variable], lags = lags_)
         st.pyplot(fig_acf)
         
         if acfValues == 'Yes':
@@ -188,12 +258,12 @@ elif selected == 'Analysis':
     elif analysisMethod == 'Partial Autocorrelation':
 
         # Partial Autocorrelation
-        lags_ = st.sidebar.number_input("Please enter the order of autocorrelation:", min_value=1, max_value=100, value=1, step=1)
+        lags_ = st.sidebar.number_input("Please enter the # lags:", min_value=1, max_value=100, value=1, step=1)
         data_pacf = pacf(df_symbol_[variable])
         
         pacfValues = st.sidebar.radio("Show Partial Autocorrelation coefficient", ["Yes", "No"], index=1, horizontal = True)
         
-        fig_pacf = plot_pacf(df_symbol_[variable])
+        fig_pacf = plot_pacf(df_symbol_[variable], lags = lags_)
         st.pyplot(fig_pacf)
         
         if pacfValues == 'Yes':
@@ -206,7 +276,7 @@ elif selected == 'Analysis':
         # st.write(df_symbol_)
         # seasonal_df = df_symbol_['rv5_ss']
         # calculate the trend component
-        window_ = st.sidebar.slider('Window Size', 1, 100, 1)
+        window_ = st.sidebar.slider('Window Size', 1, 365, 1)
         center_ = st.sidebar.radio('Center', [True, False], index=0, horizontal = True)
         df_symbol_["trend"] = df_symbol_[variable].rolling(window=window_, center=True).mean()
 
@@ -243,15 +313,128 @@ elif selected == 'Analysis':
         seasonalityPlot(df_symbol_)
 
 else:
+    
     st.sidebar.subheader(" Forecast Parameters")
 
     st.sidebar.expander("Model")
-    model_ = st.sidebar.selectbox("Select Model", ["LSTM", "Prophet", "AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "HARNet"])
+    model_ = st.sidebar.selectbox("Select Model", ["AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "LSTM", "Prophet", "HARNet"])
 
     modelExpander = st.sidebar.expander("Parameters")
 
 
-    if model_ == "LSTM":
+    if model_ == "AR":
+        df_AR = df_symbol_[['DATE', variable]]
+        
+        
+        
+        def ARModelPlot(dataOriginal, dataForecast):
+ 
+            fig1 = go.Figure()
+            
+            xAxis1 = dataOriginal['DATE']
+            yAxis1 = dataOriginal[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+            
+            yAxis2 = dataForecast
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+            
+            fig1.layout.update(
+                    title_text = "AR Model Prediction",
+                    xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
+    
+
+        ARExpander =  st.sidebar.expander("Parameters")
+        days_ = ARExpander.slider("Days", min_value = 1, max_value = int(len(df_AR)), step = 1, value = 365)
+        ARlag_ = ARExpander.slider("Lags", min_value = 1, max_value = 100, step = 1, value = 1)
+            
+        if st.sidebar.button('Forecast'):
+            
+            # selected = option_menu(
+            #     menu_title = None,
+            #     options = ["Data", "Stats", "Pre-Process", "Plot", "Analysis", "Forecast"],
+            #     icons = ['table', 'clipboard-data', 'sliders', 'graph-up', 'activity', 'share'],
+            #     orientation = "horizontal",
+            #     default_index = 3,
+            # )
+                       
+            train = df_AR[:len(df_AR)-days_]
+            train_ = train.set_index('DATE')
+            
+            
+            test = df_AR[len(df_AR)-days_:]
+            test_ = test.set_index('DATE')
+
+            train_ = train_.values
+            
+            model = AutoReg(train_, lags = ARlag_).fit()
+            
+            
+            # Make predictions of Test Set and compare
+            ARpred = model.predict(start = len(train_), end = len(df_AR) - 1, dynamic = False)
+            
+            
+            test['ARpred'] = ARpred
+            
+            fig1 = go.Figure()
+        
+            xAxis1 = train['DATE']
+            yAxis1 = train[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Train', line=dict(color="#0043ff")))
+            
+            xAxis2 = test['DATE']
+            yAxis2 = test[variable]
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Test', line=dict(color="#21ff00")))
+            
+            yAxis3 = test['ARpred']
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis3, name = 'Prediction', line=dict(color="#ff0000")))
+            
+            fig1.layout.update(
+            title_text = "AR Prediction",
+            xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
+            
+            # Calculate the error
+            
+            ARrmse = np.sqrt(mean_squared_error(test[variable], test['ARpred']))
+            
+            # Forecast
+            
+            
+
+    
+    elif model_ == "MA":
+        pass
+    
+    elif model_ == "ARMA":
+        pass
+    
+    elif model_ == "ARIMA":
+        pass
+    
+    elif model_ == "SARIMA":
+        pass
+    
+    elif model_ == "SARIMAX":
+        pass
+    
+    elif model_ == "VAR":
+        pass
+    
+    elif model_ == "VARMA":
+        pass
+    
+    elif model_ == "VARMAX":
+        pass
+    
+    elif model_ == "SES":
+        pass
+    
+    elif model_ == "HWES":
         pass
 
 
@@ -268,27 +451,33 @@ else:
         daily_seasonality_ = prophetExpander.radio("Daily Seasonality", [True, False], index = 1, horizontal = True)
         weekly_seasonality_ = prophetExpander.radio("Weekly Seasonality", [True, False], index = 1, horizontal = True)
         yearly_seasonality_ = prophetExpander.radio("Yearly Seasonality", [True, False], index = 1, horizontal = True)
+        periods_ = prophetExpander.slider("Periods (days)", min_value = 1, max_value = 3650, step = 1, value = 365)
         
         if st.sidebar.button('Forecast'):
-            # Create Model
-            m = Prophet(interval_width = interval_width_, daily_seasonality = daily_seasonality_, weekly_seasonality = weekly_seasonality_, yearly_seasonality = yearly_seasonality_)
-            model = m.fit(df_prophet)
+            
+            @st.cache            
+            def prophet_model(df_prophet, interval_width_, daily_seasonality_, weekly_seasonality_, yearly_seasonality_, periods_):
+                # Create Model
+                m = Prophet(interval_width = interval_width_, daily_seasonality = daily_seasonality_, weekly_seasonality = weekly_seasonality_, yearly_seasonality = yearly_seasonality_)
+                m.fit(df_prophet)
 
-            # Forecast
-            
-            periods_ = prophetExpander.slider("Periods (days)", min_value = 1, max_value = 3650, step = 1, value = 365)
-            prophetFuture = m.make_future_dataframe(periods = periods_)
-            prophetForecast = m.predict(prophetFuture)
-            
-            showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1, horizontal = True)
-            
-            if showProphetForecast_ == True:
-                st.subheader("Forecast")
-                st.dataframe(prophetForecast)
+                # Forecast
                 
-            # Save Forecast into new df
-            prophetForecast_ = prophetForecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+                prophetFuture = m.make_future_dataframe(periods = periods_)
+                prophetForecast = m.predict(prophetFuture)
+                
+                # Save Forecast into new df
+                prophetForecast_ = prophetForecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+                
+                return m, prophetForecast_
             
+            # def prophetFocastComponents(model, data):
+                
+            #     fig1 = plot_plotly(model, data)
+            #     # st.pyplot(fig_prophetComp)  
+                
+            #     st.plotly_chart(fig1)         
+
             def postProphetFocast(dataOriginal, dataForecast):
         
                 fig1 = go.Figure()
@@ -313,7 +502,41 @@ else:
                 
                 st.plotly_chart(fig1)
                 
+            # Execute Prophet Forecast
+            m, prophetForecast_ = prophet_model(df_prophet, interval_width_, daily_seasonality_, weekly_seasonality_, yearly_seasonality_, periods_)
+            
+            # Horizontal Menu
+            # prophetForecastMenu = option_menu(
+            #     menu_title = None,
+            #     options = ["Forecast", "Components"],
+            #     orientation = "horizontal",
+            #     default_index = 0,
+            # )
+            
+            # if prophetForecastMenu == "Forecast":
             postProphetFocast(df_symbol_, prophetForecast_)
+                
+            # elif prophetForecastMenu == "Components":
+            #     fig1 = plot_plotly(m, prophetForecast_)
+            #     # st.pyplot(fig_prophetComp)  
+                
+            #     st.plotly_chart(fig1) 
+                
+            # showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1, horizontal = True)
+            
+            # if showProphetForecast_ == True:
+            # #     st.subheader("Forecast")
+            # #     st.dataframe(prophetForecast)
+                
+            # showProphetForecastComponents_ = st.sidebar.radio("Show ForecastComponents", [True, False], index = 0, horizontal = True)
+            
+            
+                
+            
+            
+            # if showProphetForecastComponents_ == True:
+            #     prophetFocastComponents(m, prophetForecast_)
+                
         
 
 
