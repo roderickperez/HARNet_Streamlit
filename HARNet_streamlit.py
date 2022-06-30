@@ -1,3 +1,4 @@
+from copy import copy
 from operator import index
 from requests import options
 import streamlit as st
@@ -15,7 +16,6 @@ from prophet import Prophet
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import numpy as np
-
 import sklearn
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
@@ -23,6 +23,8 @@ from sklearn.metrics import mean_absolute_error
 ###############################
 from statsmodels.tsa.ar_model import AutoReg # Autoregression (AR) model
 from statsmodels.tsa.stattools import adfuller, kpss
+
+from statsmodels.tsa.arima.model import ARIMA
 
 
 
@@ -349,66 +351,94 @@ else:
     
 
         ARExpander =  st.sidebar.expander("Parameters")
-        days_ = ARExpander.slider("Days", min_value = 1, max_value = int(len(df_AR)), step = 1, value = 365)
         ARlag_ = ARExpander.slider("Lags", min_value = 1, max_value = 100, step = 1, value = 1)
+        testDays_ = ARExpander.slider("Test Days", min_value = 1, max_value = int(len(df_AR)), step = 1, value = 365)
+        
+        futureDays_ = ARExpander.slider("Forecast Days", min_value = 1, max_value = 3650, step = 1, value = 365)
             
         if st.sidebar.button('Forecast'):
-            
-            # selected = option_menu(
-            #     menu_title = None,
-            #     options = ["Data", "Stats", "Pre-Process", "Plot", "Analysis", "Forecast"],
-            #     icons = ['table', 'clipboard-data', 'sliders', 'graph-up', 'activity', 'share'],
-            #     orientation = "horizontal",
-            #     default_index = 3,
-            # )
                        
-            train = df_AR[:len(df_AR)-days_]
+            train = df_AR[:len(df_AR)-testDays_]
             train_ = train.set_index('DATE')
             
             
-            test = df_AR[len(df_AR)-days_:]
+            test = df_AR[len(df_AR)-testDays_:]
             test_ = test.set_index('DATE')
 
             train_ = train_.values
             
             model = AutoReg(train_, lags = ARlag_).fit()
             
-            
             # Make predictions of Test Set and compare
             ARpred = model.predict(start = len(train_), end = len(df_AR) - 1, dynamic = False)
             
-            
             test['ARpred'] = ARpred
+                       
+            # Calculate the error
+           
+            ARrmse = round(np.sqrt(mean_squared_error(test_[variable], ARpred)), 5)
+            ARrmae = round(np.sqrt(mean_absolute_error(test_[variable], ARpred)), 5)
+            
+            st.sidebar.metric("RMSE", ARrmse)
+            st.sidebar.metric("RMAE", ARrmae)
+            
+            # Forecast
+            
+            dfTest = []
+
+            dfTest = df_AR['DATE']
+            
+            
+            ts = df_AR['DATE'].max()
+            
+           
+            fdates = ts + pd.Timedelta(days=futureDays_)
+            
+            fdates_ = pd.DataFrame(pd.date_range(ts, fdates), columns=['future_date'])
+                        
+            fdates_['DATE'] = fdates_['future_date'].dt.date
+            
+            fdates_['ARfuture'] = model.predict(start = len(df_AR), end = len(df_AR) + futureDays_, dynamic = False)
+            
+            fdates_ = fdates_.drop('future_date', axis=1)
+            
+            # st.write(fdates_)
+            
+            ################## Plot Results ##################
             
             fig1 = go.Figure()
+            
+            # Train Data
         
             xAxis1 = train['DATE']
             yAxis1 = train[variable]
             fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Train', line=dict(color="#0043ff")))
+            
+            # Test Data
             
             xAxis2 = test['DATE']
             yAxis2 = test[variable]
 
             fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Test', line=dict(color="#21ff00")))
             
+            # Prediction Data
+            
             yAxis3 = test['ARpred']
 
             fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis3, name = 'Prediction', line=dict(color="#ff0000")))
+            
+            # Forecast
+            
+            xAxis4 = fdates_['DATE']
+            yAxis4 = fdates_['ARfuture']
+
+            fig1.add_trace(go.Scatter( x = xAxis4, y = yAxis4, name = 'Forecast', line=dict(color="#dc00ff")))
             
             fig1.layout.update(
             title_text = "AR Prediction",
             xaxis_rangeslider_visible = True)
         
             st.plotly_chart(fig1)
-            
-            # Calculate the error
-            
-            ARrmse = np.sqrt(mean_squared_error(test[variable], test['ARpred']))
-            
-            # Forecast
-            
-            
-
     
     elif model_ == "MA":
         pass
