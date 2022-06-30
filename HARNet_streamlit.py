@@ -15,6 +15,8 @@ from prophet import Prophet
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import numpy as np
+
+import sklearn
 from sklearn.preprocessing import mean_squared_error
 
 ###############################
