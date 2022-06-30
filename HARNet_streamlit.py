@@ -330,8 +330,6 @@ else:
     if model_ == "AR":
         df_AR = df_symbol_[['DATE', variable]]
         
-        
-        
         def ARModelPlot(dataOriginal, dataForecast):
  
             fig1 = go.Figure()
@@ -441,7 +439,115 @@ else:
             st.plotly_chart(fig1)
     
     elif model_ == "MA":
-        pass
+        df_MA = df_symbol_[['DATE', variable]]
+        
+        def MAModelPlot(dataOriginal, dataForecast):
+ 
+            fig1 = go.Figure()
+            
+            xAxis1 = dataOriginal['DATE']
+            yAxis1 = dataOriginal[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+            
+            yAxis2 = dataForecast
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+            
+            fig1.layout.update(
+                    title_text = "AR Model Prediction",
+                    xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
+    
+
+        MAExpander =  st.sidebar.expander("Parameters")
+        MA_q_ = MAExpander.slider("q", min_value = 1, max_value = 10, step = 1, value = 1)
+        testDays_ = MAExpander.slider("Test Days", min_value = 1, max_value = int(len(df_MA)), step = 1, value = 365)
+        
+        futureDays_ = MAExpander.slider("Forecast Days", min_value = 1, max_value = 3650, step = 1, value = 365)
+            
+        if st.sidebar.button('Forecast'):
+                       
+            train = df_MA[:len(df_MA)-testDays_]
+            train_ = train.set_index('DATE')
+            
+            
+            test = df_MA[len(df_MA)-testDays_:]
+            test_ = test.set_index('DATE')
+
+            train_ = train_.values
+            
+            model = ARIMA(train_, order=(0, 0, MA_q_)).fit() ################
+            
+            # Make predictions of Test Set and compare
+            MApred = model.predict(start = len(train_), end = len(df_MA) - 1, dynamic = False)
+            
+            test['MApred'] = MApred
+                       
+            # Calculate the error
+           
+            MArmse = round(np.sqrt(mean_squared_error(test_[variable], MApred)), 5)
+            MArmae = round(np.sqrt(mean_absolute_error(test_[variable], MApred)), 5)
+            
+            st.sidebar.metric("RMSE", MArmse)
+            st.sidebar.metric("RMAE", MArmae)
+            
+            # Forecast
+            
+            dfTest = []
+
+            dfTest = df_MA['DATE']
+            
+            
+            ts = df_MA['DATE'].max()
+            
+           
+            fdates = ts + pd.Timedelta(days=futureDays_)
+            
+            fdates_ = pd.DataFrame(pd.date_range(ts, fdates), columns=['future_date'])
+                        
+            fdates_['DATE'] = fdates_['future_date'].dt.date
+            
+            fdates_['MAfuture'] = model.predict(start = len(df_MA), end = len(df_MA) + futureDays_, dynamic = False)
+            
+            fdates_ = fdates_.drop('future_date', axis=1)
+            
+            # st.write(fdates_)
+            
+            ################## Plot Results ##################
+            
+            fig1 = go.Figure()
+            
+            # Train Data
+        
+            xAxis1 = train['DATE']
+            yAxis1 = train[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Train', line=dict(color="#0043ff")))
+            
+            # Test Data
+            
+            xAxis2 = test['DATE']
+            yAxis2 = test[variable]
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Test', line=dict(color="#21ff00")))
+            
+            # Prediction Data
+            
+            yAxis3 = test['MApred']
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis3, name = 'Prediction', line=dict(color="#ff0000")))
+            
+            # Forecast
+            
+            xAxis4 = fdates_['DATE']
+            yAxis4 = fdates_['MAfuture']
+
+            fig1.add_trace(go.Scatter( x = xAxis4, y = yAxis4, name = 'Forecast', line=dict(color="#dc00ff")))
+            
+            fig1.layout.update(
+            title_text = "MA Prediction",
+            xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
     
     elif model_ == "ARMA":
         pass
