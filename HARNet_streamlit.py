@@ -16,7 +16,7 @@ from prophet import Prophet
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import numpy as np
-import sklearn
+from prophet.plot import plot_plotly, plot_components_plotly
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 
@@ -25,7 +25,7 @@ from statsmodels.tsa.ar_model import AutoReg # Autoregression (AR) model
 from statsmodels.tsa.stattools import adfuller, kpss
 
 from statsmodels.tsa.arima.model import ARIMA
-
+# from statsmodels.tsa.api import VAR
 
 
 
@@ -321,8 +321,8 @@ else:
     
     st.sidebar.subheader(" Forecast Parameters")
 
-    st.sidebar.expander("Model")
-    model_ = st.sidebar.selectbox("Select Model", ["AR", "MA", "ARMA", "ARIMA", "SARIMA", "SARIMAX", "VAR", "VARMA", "VARMAX", "SES", "HWES", "LSTM", "Prophet", "HARNet"])
+    st.sidebar.expander("Model") # Reference https://machinelearningmastery.com/time-series-forecasting-methods-in-python-cheat-sheet/
+    model_ = st.sidebar.selectbox("Select Model", ["AR", "MA", "ARMA", "ARIMA", "Prophet", "Neural Prophet", "LSTM", "GRU" , "HARNet"]) # For Multi-variate
 
     modelExpander = st.sidebar.expander("Parameters")
 
@@ -662,131 +662,192 @@ else:
             st.plotly_chart(fig1)
     
     elif model_ == "ARIMA":
-        pass
+        df_ARIMA = df_symbol_[['DATE', variable]]
+        
+        def ARIMAModelPlot(dataOriginal, dataForecast):
+ 
+            fig1 = go.Figure()
+            
+            xAxis1 = dataOriginal['DATE']
+            yAxis1 = dataOriginal[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+            
+            yAxis2 = dataForecast
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+            
+            fig1.layout.update(
+                    title_text = "ARMA Model Prediction",
+                    xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
     
-    elif model_ == "SARIMA":
-        pass
-    
-    elif model_ == "SARIMAX":
-        pass
-    
-    elif model_ == "VAR":
-        pass
-    
-    elif model_ == "VARMA":
-        pass
-    
-    elif model_ == "VARMAX":
-        pass
-    
-    elif model_ == "SES":
-        pass
-    
-    elif model_ == "HWES":
-        pass
+
+        ARIMAExpander =  st.sidebar.expander("Parameters")
+        ARIMA_p_ = ARIMAExpander.slider("(AR) p", min_value = 1, max_value = 10, step = 1, value = 2)
+        ARIMA_i_ = ARIMAExpander.slider("(Integration) i", min_value = 1, max_value = 10, step = 1, value = 1)
+        ARIMA_q_ = ARIMAExpander.slider("(MA) q", min_value = 1, max_value = 10, step = 1, value = 1)
+        testDays_ = ARIMAExpander.slider("Test Days", min_value = 1, max_value = int(len(df_ARIMA)), step = 1, value = 365)
+        
+        futureDays_ = ARIMAExpander.slider("Forecast Days", min_value = 1, max_value = 3650, step = 1, value = 365)
+            
+        if st.sidebar.button('Forecast'):
+                       
+            train = df_ARIMA[:len(df_ARIMA)-testDays_]
+            train_ = train.set_index('DATE')
+            
+            
+            test = df_ARIMA[len(df_ARIMA)-testDays_:]
+            test_ = test.set_index('DATE')
+
+            train_ = train_.values
+            
+            model = ARIMA(train_, order=(ARIMA_p_, ARIMA_i_, ARIMA_q_)).fit() ################
+            
+            # Make predictions of Test Set and compare
+            ARIMApred = model.predict(start = len(train_), end = len(df_ARIMA) - 1, dynamic = False)
+            
+            test['ARIMApred'] = ARIMApred
+                       
+            # Calculate the error
+           
+            ARIMArmse = round(np.sqrt(mean_squared_error(test_[variable], ARIMApred)), 5)
+            ARIMArmae = round(np.sqrt(mean_absolute_error(test_[variable], ARIMApred)), 5)
+            
+            st.sidebar.metric("RMSE", ARIMArmse)
+            st.sidebar.metric("RMAE", ARIMArmae)
+            
+            # Forecast
+            
+            dfTest = []
+
+            dfTest = df_ARIMA['DATE']
+            
+            
+            ts = df_ARIMA['DATE'].max()
+            
+           
+            fdates = ts + pd.Timedelta(days=futureDays_)
+            
+            fdates_ = pd.DataFrame(pd.date_range(ts, fdates), columns=['future_date'])
+                        
+            fdates_['DATE'] = fdates_['future_date'].dt.date
+            
+            fdates_['ARIMAfuture'] = model.predict(start = len(df_ARIMA), end = len(df_ARIMA) + futureDays_, dynamic = False)
+            
+            fdates_ = fdates_.drop('future_date', axis=1)
+            
+            # st.write(fdates_)
+            
+            ################## Plot Results ##################
+            
+            fig1 = go.Figure()
+            
+            # Train Data
+        
+            xAxis1 = train['DATE']
+            yAxis1 = train[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Train', line=dict(color="#0043ff")))
+            
+            # Test Data
+            
+            xAxis2 = test['DATE']
+            yAxis2 = test[variable]
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Test', line=dict(color="#21ff00")))
+            
+            # Prediction Data
+            
+            yAxis3 = test['ARIMApred']
+
+            fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis3, name = 'Prediction', line=dict(color="#ff0000")))
+            
+            # Forecast
+            
+            xAxis4 = fdates_['DATE']
+            yAxis4 = fdates_['ARIMAfuture']
+
+            fig1.add_trace(go.Scatter( x = xAxis4, y = yAxis4, name = 'Forecast', line=dict(color="#dc00ff")))
+            
+            fig1.layout.update(
+            title_text = "ARIMA Prediction",
+            xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
 
 
     elif model_ == "Prophet":
-        # Keep only two columns
-        df_prophet = df_symbol_[['DATE', variable]]
-        # Rename columns
-        df_prophet.columns = ['ds', 'y']
+        df_Prophet = df_symbol_[['DATE', variable]]
         
-    
-        # Phophet Model
-        prophetExpander =  st.sidebar.expander("Parameters")
-        interval_width_ = prophetExpander.slider("Interval Width (%)", min_value = 0.0, max_value = 1.0, step = 0.1, value = 0.95)
-        daily_seasonality_ = prophetExpander.radio("Daily Seasonality", [True, False], index = 1, horizontal = True)
-        weekly_seasonality_ = prophetExpander.radio("Weekly Seasonality", [True, False], index = 1, horizontal = True)
-        yearly_seasonality_ = prophetExpander.radio("Yearly Seasonality", [True, False], index = 1, horizontal = True)
-        periods_ = prophetExpander.slider("Periods (days)", min_value = 1, max_value = 3650, step = 1, value = 365)
-        
-        if st.sidebar.button('Forecast'):
+        def ProphetModelPlot(dataOriginal, dataForecast):
+ 
+            fig1 = go.Figure()
             
-            @st.cache            
-            def prophet_model(df_prophet, interval_width_, daily_seasonality_, weekly_seasonality_, yearly_seasonality_, periods_):
-                # Create Model
-                m = Prophet(interval_width = interval_width_, daily_seasonality = daily_seasonality_, weekly_seasonality = weekly_seasonality_, yearly_seasonality = yearly_seasonality_)
-                m.fit(df_prophet)
-
-                # Forecast
-                
-                prophetFuture = m.make_future_dataframe(periods = periods_)
-                prophetForecast = m.predict(prophetFuture)
-                
-                # Save Forecast into new df
-                prophetForecast_ = prophetForecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
-                
-                return m, prophetForecast_
+            xAxis1 = dataOriginal['DATE']
+            yAxis1 = dataOriginal[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
             
-            # def prophetFocastComponents(model, data):
-                
-            #     fig1 = plot_plotly(model, data)
-            #     # st.pyplot(fig_prophetComp)  
-                
-            #     st.plotly_chart(fig1)         
-
-            def postProphetFocast(dataOriginal, dataForecast):
-        
-                fig1 = go.Figure()
-                # fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-                
-                xAxis1 = dataOriginal['DATE']
-                yAxis1 = dataOriginal[variable]
-                fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff", width=1)))
-                
-                xAxis2 = dataForecast['ds']
-                yAxis2 = dataForecast['yhat']
-                fig1.add_trace(go.Scatter( x = xAxis2, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
-                
-                fig1.update_layout(
-                    autosize = False,
-                    width = 1300,
-                    height = 500)
-                
-                fig1.layout.update(
-                    title_text = "Forecast",
+            yAxis2 = dataForecast
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+            
+            fig1.layout.update(
+                    title_text = "ARMA Model Prediction",
                     xaxis_rangeslider_visible = True)
-                
-                st.plotly_chart(fig1)
-                
-            # Execute Prophet Forecast
-            m, prophetForecast_ = prophet_model(df_prophet, interval_width_, daily_seasonality_, weekly_seasonality_, yearly_seasonality_, periods_)
-            
-            # Horizontal Menu
-            # prophetForecastMenu = option_menu(
-            #     menu_title = None,
-            #     options = ["Forecast", "Components"],
-            #     orientation = "horizontal",
-            #     default_index = 0,
-            # )
-            
-            # if prophetForecastMenu == "Forecast":
-            postProphetFocast(df_symbol_, prophetForecast_)
-                
-            # elif prophetForecastMenu == "Components":
-            #     fig1 = plot_plotly(m, prophetForecast_)
-            #     # st.pyplot(fig_prophetComp)  
-                
-            #     st.plotly_chart(fig1) 
-                
-            # showProphetForecast_ = st.sidebar.radio("Show Forecast", [True, False], index = 1, horizontal = True)
-            
-            # if showProphetForecast_ == True:
-            # #     st.subheader("Forecast")
-            # #     st.dataframe(prophetForecast)
-                
-            # showProphetForecastComponents_ = st.sidebar.radio("Show ForecastComponents", [True, False], index = 0, horizontal = True)
-            
-            
-                
-            
-            
-            # if showProphetForecastComponents_ == True:
-            #     prophetFocastComponents(m, prophetForecast_)
-                
         
+            st.plotly_chart(fig1)
+    
 
+        ProphetExpander =  st.sidebar.expander("Parameters")
+        daily_seasonality_ = ProphetExpander.radio("Daily Seasonality", [True, False], index = 1, horizontal = True)
+        weekly_seasonality_ = ProphetExpander.radio("Weekly Seasonality", [True, False], index = 1, horizontal = True)
+        yearly_seasonality_ = ProphetExpander.radio("Yearly Seasonality", [True, False], index = 1, horizontal = True)
+
+        testDays_ = ProphetExpander.slider("Test Days", min_value = 1, max_value = int(len(df_Prophet)), step = 1, value = 365)
+        
+        futureDays_ = ProphetExpander.slider("Forecast Days", min_value = 1, max_value = 3650, step = 1, value = 365)
+            
+        if st.sidebar.button('Forecast'):
+                       
+            train_ = df_Prophet[:len(df_Prophet)-testDays_]
+        
+            train_.columns = ['ds', 'y']
+            
+            # st.write("Train", train_)
+            # st.write("length train_:",len(train_))
+            
+            test = df_Prophet[len(df_Prophet)-testDays_:]
+            test_ = test.set_index('DATE')
+            # fdates_ = fdates_.drop('future_date', axis=1)
+            
+            # st.write("length test:", len(test_))
+            # st.write("test_", test_)
+
+            model = Prophet()
+            model.fit(train_) 
+                 
+            future=model.make_future_dataframe(periods=futureDays_)
+            forecast=model.predict(future)
+            
+            col1, col2 = st.columns(2)
+                
+            with col1:
+                st.title("Forecast")
+                fig1 = plot_plotly(model, forecast)
+                fig1.update_layout(
+                    autosize=False,
+                    width=700,
+                    height=400)
+                
+                st.plotly_chart(fig1) 
+                    
+            with col2:
+                st.title("Components")
+                fig2 = plot_components_plotly(model, forecast)
+                fig2.update_layout(
+                    autosize=False,
+                    width=700,
+                    height=400)
+                
+                st.plotly_chart(fig2)                      
 
 
     elif model_ == "HARNet":
