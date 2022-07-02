@@ -16,6 +16,8 @@ from prophet import Prophet
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import numpy as np
+import glob
+import os
 from prophet.plot import plot_plotly, plot_components_plotly
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
@@ -27,7 +29,13 @@ from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.arima.model import ARIMA
 # from statsmodels.tsa.api import VAR
 
-
+######################
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Flatten
+# from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.losses import MeanSquaredError
+from tensorflow.keras.metrics import RootMeanSquaredError
+from tensorflow.keras.optimizers import Adam, RMSprop, SGD, Adagrad, Adadelta, Adamax
 
 ######################
 
@@ -322,7 +330,7 @@ else:
     st.sidebar.subheader(" Forecast Parameters")
 
     st.sidebar.expander("Model") # Reference https://machinelearningmastery.com/time-series-forecasting-methods-in-python-cheat-sheet/
-    model_ = st.sidebar.selectbox("Select Model", ["AR", "MA", "ARMA", "ARIMA", "Prophet", "Neural Prophet", "LSTM", "GRU" , "HARNet"]) # For Multi-variate
+    model_ = st.sidebar.selectbox("Select Model", ["AR", "MA", "ARMA", "ARIMA", "Prophet", "Neural Prophet", "GARCH", "LSTM", "GRU" , "HARNet"]) # For Multi-variate
 
     modelExpander = st.sidebar.expander("Parameters")
 
@@ -849,7 +857,323 @@ else:
                 
                 st.plotly_chart(fig2)                      
 
+    elif model_ == "LSTM":
+        df_LSTM = df_symbol_[['DATE', variable]]
+        
+        ########################
 
+        df_LSTM_ = df_LSTM.set_index('DATE')
+        df_LSTM_ = df_LSTM_[variable]
+        
+       
+        def LSTMModelPlot(dataOriginal, dataForecast):
+ 
+            fig1 = go.Figure()
+            
+            xAxis1 = dataOriginal['DATE']
+            yAxis1 = dataOriginal[variable]
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Original', line=dict(color="#0043ff")))
+            
+            yAxis2 = dataForecast
+            fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Forecast', line=dict(color="#ee00ff", width=1, dash='dash')))
+            
+            fig1.layout.update(
+                    title_text = "ARMA Model Prediction",
+                    xaxis_rangeslider_visible = True)
+        
+            st.plotly_chart(fig1)
+    
+
+        LSTMExpander =  st.sidebar.expander("Parameters")
+        windowSize_ = LSTMExpander.slider("Window Size:", min_value = 1, max_value = int(len(df_LSTM)), step = 1, value = 365)
+        loss_= LSTMExpander.selectbox("Loss:", ['RMSE', 'MSE'], index = 1)
+        if loss_ == "RMSE":
+            loss_ = RootMeanSquaredError()
+        elif loss_ == "MSE":
+            loss_ = MeanSquaredError()
+            
+        lr_ = LSTMExpander.slider("Learning Rate:", min_value = 0.001, max_value = 1.0, step = 0.001, value = 0.001)
+            
+        optimizer_ = LSTMExpander.selectbox("Optimizer:", ["Adam", "RMSprop", "SGD", "Adagrad", "Adadelta", "Adamax"], index = 0)
+        if optimizer_ == "Adam":
+            optimizer_ = Adam(learning_rate = lr_)
+        elif optimizer_ == "RMSprop":
+            optimizer_ = RMSprop(learning_rate = lr_)
+        elif optimizer_ == "SGD":
+            optimizer_ = SGD(learning_rate = lr_)
+        elif optimizer_ == "Adagrad":
+            optimizer_ = Adagrad(learning_rate = lr_)
+        elif optimizer_ == "Adadelta":
+            optimizer_ = Adadelta(learning_rate = lr_)
+        elif optimizer_ == "Adamax":
+            optimizer_ = Adamax(learning_rate = lr_)
+            
+        epochs_ = LSTMExpander.slider("Epochs", min_value = 1, max_value = 1000, step = 1, value = 2)
+        ######################
+        valDays_ = LSTMExpander.slider("Validation Days", min_value = 1, max_value = int(len(df_LSTM)), step = 1, value = 365)
+        testDays_ = LSTMExpander.slider("Test Days", min_value = 1, max_value = int(len(df_LSTM)), step = 1, value = 365)
+        # futureDays_ = LSTMExpander.slider("Forecast Days", min_value = 1, max_value = 3650, step = 1, value = 365)
+        
+            
+        if st.sidebar.button('Forecast'):
+            ##############################
+            # LSTM (Univariate)
+            # X [[[1], [2], [3], [4], [5]]] -> y [6]
+            # X [[[2], [3], [4], [5], [6]]] -> y [7]
+            # X [[[3], [4], [5], [6], [7]]] -> y [8]
+            
+            # where X is a 3D matrix, and the window size is 5
+            
+            
+            # LSTM (Multivariate)
+            # X [[[1a 1b], [2a 2b], [3a 3b], [4a 4b], [5a 5b]]] -> y [6c]
+            # X [[[2a 2b], [3a 3b], [4a 4b], [5a 5b], [6a 6b]]] -> y [7c]
+            # X [[[3a 3b], [4a 4b], [5a 5b], [6a 6b], [7a 7b]]] -> y [8c]
+            
+            ##############################
+            def df_X_y(df, window_size):
+                # df_as_np = df.to_numpy() # Convert to numpy
+                X = []
+                y = []
+                for i in range(len(df) - window_size):
+                    row = [[a] for a in df[i:i+window_size]]
+                    X.append(row)
+                    label = df[i+window_size] # real value of the next day
+                    y.append(label)
+                return np.array(X), np.array(y)
+                
+         
+            ##############################
+            
+                        
+            train = df_LSTM[:len(df_LSTM)-(valDays_+testDays_)-windowSize_]
+            # train_ = train.set_index('DATE')
+            
+            val = df_LSTM[len(df_LSTM)-(valDays_+testDays_)-windowSize_:len(df_LSTM)-testDays_-windowSize_]
+            # val_ = train.set_index('DATE')
+            
+            test = df_LSTM[len(df_LSTM)-testDays_:]
+            # test_ = test.set_index('DATE')
+            
+           
+            #################################
+
+            X, y = df_X_y(df_LSTM_, windowSize_) # Input full dataset
+
+            ###########################
+            
+            X_train, y_train = X[:len(X)-(valDays_+testDays_)], y[:len(y)-(valDays_+testDays_)]
+            X_val, y_val = X[len(X)-(valDays_+testDays_):len(X)-testDays_], y[len(X)-(valDays_+testDays_):len(y)-testDays_]
+            X_test, y_test = X[len(X)-testDays_:], y[len(y)-testDays_:]
+                      
+            ##################################
+            # Create LSTM Model
+            
+            
+            
+            # Specify inputs
+            
+            def LSTM_model(windowSize_, optimizer_, loss_):
+                LSTMModel = Sequential()
+                LSTMModel.add(LSTM(64, input_shape = (windowSize_, 1))) #Specify input shape
+                LSTMModel.add(Dense(8))
+                LSTMModel.add(Dense(1))                    
+                
+                LSTMModelSummaryExpander =  st.sidebar.expander("Model Summary")
+
+                LSTMModel.summary(print_fn=lambda x: LSTMModelSummaryExpander.write(x))
+
+                LSTMModel.compile(optimizer = optimizer_, loss = [loss_], metrics=["mae"])
+                
+                return LSTMModel
+            
+            LSTMModel = LSTM_model(windowSize_, optimizer_, loss_)
+            
+            ##############################
+            ##############################
+            
+            LSTM_history = LSTMModel.fit(X_train, y_train, epochs = epochs_, validation_data = (X_val, y_val))
+            
+            LSTMTrainPrediction = LSTMModel.predict(X_train).flatten()
+            LSTMTrainPrediction = pd.DataFrame(data={'DATE': train["DATE"], 'Train': LSTMTrainPrediction, 'Real': y_train})
+            
+            
+            #######################
+            # Validation
+            
+            valPrediction = LSTMModel.predict(X_val).flatten()
+            LSTMValPrediction = pd.DataFrame(data={'DATE': val["DATE"], 'Val': valPrediction, 'Real': y_val})
+            
+            #######################
+            # Test
+            
+            testPrediction = LSTMModel.predict(X_test).flatten()
+            LSTMtestPrediction = pd.DataFrame(data={'DATE': test["DATE"], 'Test': testPrediction, 'Real': y_test})
+            
+            # st.write(LSTMTrainPrediction)
+         
+            
+            ####################################
+            ####################################
+            
+            ##################################
+            # model = ARIMA(train_, order=(ARIMA_p_, ARIMA_i_, ARIMA_q_)).fit() ################
+            ############################
+            
+            # # Make predictions of Test Set and compare
+            # LSTMpred = model.predict(start = len(train_), end = len(df_LSTM) - 1, dynamic = False)
+            
+            # test['LSTMpred'] = LSTMpred
+                       
+            # Calculate the error (Training)
+            
+            trainingExpander = st.sidebar.expander("Training Error")
+           
+            LSTMtrainingrmse = round(np.sqrt(mean_squared_error(LSTMTrainPrediction['Real'], LSTMTrainPrediction['Train'])), 5)
+            LSTMtrainingrmae = round(np.sqrt(mean_absolute_error(LSTMTrainPrediction['Real'], LSTMTrainPrediction['Train'])), 5)
+            
+            trainingExpander.metric("RMSE", LSTMtrainingrmse)
+            trainingExpander.metric("RMAE", LSTMtrainingrmae)
+            
+            # Calculate the error (Validation)
+            
+            validationExpander = st.sidebar.expander("Validation Error")
+           
+            LSTMvalidationrmse = round(np.sqrt(mean_squared_error(LSTMValPrediction['Real'], LSTMValPrediction['Val'])), 5)
+            LSTMvalidationrmae = round(np.sqrt(mean_absolute_error(LSTMValPrediction['Real'], LSTMValPrediction['Val'])), 5)
+            
+            validationExpander.metric("RMSE", LSTMvalidationrmse)
+            validationExpander.metric("RMAE", LSTMvalidationrmae)
+            
+            # Calculate the error (Test)
+            
+            testExpander = st.sidebar.expander("Test Error")
+           
+            LSTMtestrmse = round(np.sqrt(mean_squared_error(LSTMtestPrediction['Real'], LSTMtestPrediction['Test'])), 5)
+            LSTMtestrmae = round(np.sqrt(mean_absolute_error(LSTMtestPrediction['Real'], LSTMtestPrediction['Test'])), 5)
+            
+            testExpander.metric("RMSE", LSTMtestrmse)
+            testExpander.metric("RMAE", LSTMtestrmae)
+            
+            # Forecast
+            
+            # dfTest = []
+
+            # # dfTest = df_LSTM['DATE']
+            
+            # ts = df_LSTM['DATE'].max()
+            
+           
+            # fdates = ts + pd.Timedelta(days=futureDays_-1)
+            
+            # fdates_ = pd.DataFrame(pd.date_range(ts, fdates), columns=['future_date'])
+                        
+            # fdates_['DATE'] = fdates_['future_date'].dt.date
+            # fdates_ = fdates_.drop('future_date')
+            
+            # st.write(fdates_)
+            # st.write(len(fdates_))
+            
+            # ##############################
+            # def df_X(df, window_size):
+            #     # df_as_np = df.to_numpy() # Convert to numpy
+            #     X = []
+            #     for i in range(len(df) - window_size):
+            #         row = [[a] for a in df[i:i+window_size]]
+            #         X.append(row)
+            #     return np.array(X)
+            # ##############################
+            # LSTMfuture = []
+            
+            # X_future = df_X(df_LSTM[variable], windowSize_)
+            
+            # for i in range(futureDays_): 
+            #     LSTMfuture.append(LSTMModel.predict(X_future)[0].flatten())
+            
+            # # st.write(len(LSTMfuture))
+            
+            # LSTMfuture = pd.DataFrame(data={'DATE': fdates_['DATE'], 'LSTMfuture': LSTMfuture})
+            # st.write(LSTMfuture)
+            
+            # fdates_['ARIMAfuture'] = model.predict(start = len(df_LSTM), end = len(df_LSTM) + futureDays_, dynamic = False)
+            
+            # fdates_ = fdates_.drop('future_date', axis=1)
+            
+            # # st.write(fdates_)
+            
+            # ################## Plot Results ##################
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("LSTM Prediction")
+                fig1 = go.Figure()
+                
+                # Train Data
+            
+                xAxis1 = LSTMTrainPrediction['DATE']
+                yAxis1 = LSTMTrainPrediction['Real']
+                fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis1, name = 'Train (Original)', line=dict(color="#0043ff")))
+                
+                yAxis2 = LSTMTrainPrediction['Train']
+
+                fig1.add_trace(go.Scatter( x = xAxis1, y = yAxis2, name = 'Prediction (Validation)', line=dict(color="#21ff00")))
+                
+
+                # Validation Data
+            
+                xAxis3 = LSTMValPrediction['DATE']
+                yAxis3 = LSTMValPrediction['Real']
+                fig1.add_trace(go.Scatter( x = xAxis3, y = yAxis3, name = 'Validation (Original)', line=dict(color="#d000ff")))
+                        
+                yAxis4 = LSTMValPrediction['Val']
+
+                fig1.add_trace(go.Scatter( x = xAxis3, y = yAxis4, name = 'Prediction (Validation)', line=dict(color="#00ffe1")))
+                
+                # Test Data
+            
+                xAxis5 = LSTMtestPrediction['DATE']
+                yAxis5 = LSTMtestPrediction['Real']
+                fig1.add_trace(go.Scatter( x = xAxis5, y = yAxis5, name = 'Test (Original)', line=dict(color="#d0ff00")))
+                
+                yAxis6 = LSTMtestPrediction['Test']
+
+                fig1.add_trace(go.Scatter( x = xAxis5, y = yAxis6, name = 'Prediction (Test)', line=dict(color="#0083ff")))
+            
+                # # Future Data
+                
+                # xAxis7 = LSTMfuture['DATE']
+                # yAxis7= LSTMfuture['LSTMfuture']
+
+                # fig1.add_trace(go.Scatter( x = xAxis7, y = yAxis7, name = 'Future', line=dict(color="grey")))
+                
+                # # Forecast
+                
+                # xAxis4 = fdates_['DATE']
+                # yAxis4 = fdates_['LSTMfuture']
+
+                # fig1.add_trace(go.Scatter( x = xAxis4, y = yAxis4, name = 'Forecast', line=dict(color="#dc00ff")))
+                
+                fig1.layout.update(
+                xaxis_rangeslider_visible = True)
+            
+                st.plotly_chart(fig1)
+                
+            with col2:
+                st.write("Model History")
+                fig2 = go.Figure()
+                
+                # st.write(LSTM_history.history['mae'])
+                # st.write(LSTM_history.history['loss'])
+                
+                fig2.add_trace(go.Scatter(x=np.arange(0, epochs_, 1), y = LSTM_history.history['mae'], name = f'Training MAE', line=dict(color='orange')))
+                fig2.add_trace(go.Scatter(x=np.arange(0, epochs_, 1), y = LSTM_history.history['loss'], name = f'Training Loss', line=dict(color='green')))
+                
+                fig2.add_trace(go.Scatter(x=np.arange(0, epochs_, 1), y = LSTM_history.history['val_mae'], name = f'Validation MAE', line=dict(color='magenta')))
+                fig2.add_trace(go.Scatter(x=np.arange(0, epochs_, 1), y = LSTM_history.history['val_loss'], name = f'Validation Loss', line=dict(color='yellow')))
+                
+                st.plotly_chart(fig2)
+    
     elif model_ == "HARNet":
         filter_conv_ = modelExpander.slider("Filter Convolution", 1, 10, 1)
         bias_ = modelExpander.radio("Bias", ("True", "False"), index = 1, horizontal = True)
